@@ -1,0 +1,57 @@
+
+# Ignore compiled mod DLLs if needed
+*.dll
+
+# But keep your own mod DLLs inside Shamblers_Sense
+!Shamblers_Sense/**/*.dll
+
+# Ignore the lib folder (for local DLL references)
+lib/*.dll
+
+# Debug symbols
+*.pdb
+
+# Build output folders (if you don’t want to track compiled DLLs except your mod dll)
+bin/
+obj/
+
+# Visual Studio specific
+.vs/
+*.user
+*.suo
+*.userprefs
+*.csproj.user
+*.cache
+*.dbmdl
+
+# Rider IDE specific
+.idea/
+
+# MacOS files
+.DS_Store
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# NuGet packages (if any)
+packages/
+
+# Packages folder for Unity projects (if any)
+Library/
+Temp/
+Obj/
+
+# Unity generated meta files (if not needed)
+*.pidb
+*.booproj
+
+# Backup files
+*~
+*.bak
+
+# Your own local files that shouldn’t be tracked, e.g. local config overrides
+localconfig.xml

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xml>
+	<Name value="Shamblers_Sense"/>
+	<DisplayName value="Shamblers Sense"/>
+	<Description value="Changes screamers to not spawn a group of zombies, but just further increase the activity level that will attract large groups of shamblers."/>
+	<Author value="Rygorn85"/>
+	<Version value="0.0.1"/>
+	<Website value=""/>
+	<SkipWithAntiCheat value="true" />
+</xml>

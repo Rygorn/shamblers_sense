@@ -1,0 +1,16 @@
+
+This lib directory is for dev use and is meant to contain game installation dll's. At minimum it should have 0Harmony.dll, Assembly-CSharp.dll,
+and UnityEngine.dll. Others may be necessary depending on needs of the mod development.
+
+
+0_TFP_Harmony files needed.
+
+0Harmony.dll
+
+
+Needed dll files from game installation.
+
+Assembly-CSharp.dll
+UnityEngine.dll
+LogLibrary.dll
+UnityEngine.CoreModule.dll
