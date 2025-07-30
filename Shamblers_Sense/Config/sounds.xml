@@ -1,0 +1,9 @@
+<configs>
+
+	<!-- heat_map_strength: how much to add to heat map (once 100 is hit, horde scout is spawned) -->
+	
+	<!-- Auger Sounds -->
+	<set xpath="/sounds/SoundDataNode[@name='Auger_Fire_Start']/Noise/@heat_map_strength">1.5</set>
+	<set xpath="/sounds/SoundDataNode[@name='Auger_Fire_Start']/Noise/@heat_map_time">180</set>
+
+</configs>

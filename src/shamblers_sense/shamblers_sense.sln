@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.6.33829.357
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "shamblers_sense", "shamblers_sense\shamblers_sense.csproj", "{DE0BEB8F-C40C-4966-989E-274379BDEBCF}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shamblers_Sense", "Shamblers_Sense\Shamblers_Sense.csproj", "{DE0BEB8F-C40C-4966-989E-274379BDEBCF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

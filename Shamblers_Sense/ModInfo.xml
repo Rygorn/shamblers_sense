@@ -7,4 +7,5 @@
 	<Version value="0.0.1"/>
 	<Website value=""/>
 	<SkipWithAntiCheat value="true" />
+	<dll name="Shamblers_Sense.dll" modclass="Shamblers_Sense.ModEntry" />
 </xml>
