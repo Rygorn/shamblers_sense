@@ -1,4 +1,6 @@
-﻿using ModApi;
+﻿using HarmonyLib;
+using System.Reflection;
+using UnityEngine;
 
 namespace Shamblers_Sense
 {

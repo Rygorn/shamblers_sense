@@ -1,113 +1,218 @@
-﻿// Patches.cs
-
-using HarmonyLib;
+﻿using HarmonyLib;
 using UnityEngine;
 using System.Collections.Generic;
+using System.Linq;
+using System;
 
 namespace Shamblers_Sense
 {
-    [HarmonyPatch(typeof(AIDirectorChunkData))]
+    [HarmonyPatch(typeof(AIDirector))]
     [HarmonyPatch("CheckToSpawn")]
-    public class Patch_AIDirectorChunkData_CheckToSpawn
+    public class Patch_AIDirector_CheckToSpawn
     {
-        static bool Prefix(AIDirectorChunkData __instance)
+        private static AIDirectorChunkEventComponent chunkEventComponent;
+
+        private static readonly float[] thresholds = { 30f, 50f, 70f, 90f };
+
+        private static long lastHighHeatSpawnTime = 0;
+        private static System.Random rng = new System.Random();
+
+        static bool Prefix(AIDirector __instance, AIDirectorChunkData _chunkData)
         {
-            // Early exit if game settings disable zombies or heat
             if (!GameStats.GetBool(EnumGameStats.ZombieHordeMeter) || !GameStats.GetBool(EnumGameStats.IsSpawnEnemies))
-                return false; // Skip original method
+                return false;
 
-            float activity = __instance.ActivityLevel;
-            ShamblersSenseLogger.Log($"CheckToSpawn called with ActivityLevel={activity}");
-
-            // Your heat thresholds for screamer spawn
-            float[] thresholds = new float[] { 30f, 50f, 70f, 90f };
-
-            foreach (var threshold in thresholds)
+            // Cache component for scout spawns
+            if (chunkEventComponent == null)
             {
-                if (activity >= threshold && !HasTriggeredAt(__instance, threshold))
+                chunkEventComponent = __instance.GetComponent<AIDirectorChunkEventComponent>();
+                if (chunkEventComponent == null)
                 {
-                    if (TrySpawnScoutAtThreshold(__instance, threshold))
+                    Debug.LogWarning("[Shamblers_Sense] Could not find AIDirectorChunkEventComponent.");
+                    return true;
+                }
+            }
+
+            float activity = _chunkData.ActivityLevel;
+            float lowestThreshold = thresholds[0];
+
+            if (activity < lowestThreshold)
+            {
+                ShamblersSenseTracker.Reset();
+            }
+
+            foreach (float threshold in thresholds)
+            {
+                if (activity >= threshold && ShamblersSenseTracker.CanSpawn(threshold))
+                {
+                    var chunkEvent = FindBestEvent(_chunkData);
+                    if (chunkEvent != null)
                     {
-                        MarkTriggeredAt(__instance, threshold);
-                        // Don't reset heat so it can accumulate further
-                        return false; // Skip original method, we handled spawn
+                        chunkEventComponent.StartCooldownOnNeighbors(chunkEvent.Position);
+                        chunkEventComponent.SpawnScouts(chunkEvent.Position.ToVector3());
+                        ShamblersSenseTracker.RecordSpawn(threshold);
+                        return false;
                     }
                 }
             }
 
-            // Optionally, call original method if no threshold met
-            return false; // Skip original to prevent default screamer spawn
-        }
+            // NEW: Trigger high-heat zombie group spawns
+            ulong rawWorldTime = GameManager.Instance.World.worldTime;
+            long worldTime = rawWorldTime <= long.MaxValue ? (long)rawWorldTime : long.MaxValue;
 
-        private static bool TrySpawnScoutAtThreshold(AIDirectorChunkData chunkData, float threshold)
-        {
-            var evt = chunkData.FindBestEventAndReset();
-            if (evt == null)
+            if (worldTime - lastHighHeatSpawnTime >= 300) // ~every 5 in-game minutes
             {
-                AIDirector.LogAI("Chunk event not found!", new object[0]);
-                return false;
+                lastHighHeatSpawnTime = worldTime;
+                SpawnGroupsNearHighHeatChunks(__instance);
             }
 
-            if (chunkData.Director.random.RandomFloat < 0.2f && !GameUtils.IsPlaytesting())
-            {
-                ShamblersSenseLogger.Log($"Spawning scout at heat threshold {threshold}");
-                // We do NOT call SetLongDelay() here to avoid resetting heat.
-                chunkData.SetLongDelay(); // optionally comment out if you want zero delay
-                chunkData.Director.SpawnScouts(evt.Position.ToVector3());
-                return true;
-            }
             return false;
         }
 
-        // Use a HashSet or similar on the chunkData to track triggered thresholds.
-        // Since you can't modify the original class easily, use a WeakReference dictionary or similar.
-        private static readonly System.Collections.Generic.Dictionary<AIDirectorChunkData, System.Collections.Generic.HashSet<float>> triggeredThresholds = new();
-
-        private static bool HasTriggeredAt(AIDirectorChunkData chunkData, float threshold)
+        private static AIDirectorChunkEvent FindBestEvent(AIDirectorChunkData chunkData)
         {
-            if (triggeredThresholds.TryGetValue(chunkData, out var set))
+            AIDirectorChunkEvent bestEvent = null;
+            if (chunkData.events.Count > 0)
             {
-                return set.Contains(threshold);
+                bestEvent = chunkData.events[0];
+                for (int i = 1; i < chunkData.events.Count; i++)
+                {
+                    if (chunkData.events[i].Value > bestEvent.Value)
+                        bestEvent = chunkData.events[i];
+                }
             }
-            return false;
+            return bestEvent;
         }
 
-        private static void MarkTriggeredAt(AIDirectorChunkData chunkData, float threshold)
+        private static void SpawnGroupsNearHighHeatChunks(AIDirector director)
         {
-            if (!triggeredThresholds.TryGetValue(chunkData, out var set))
+            try
             {
-                set = new System.Collections.Generic.HashSet<float>();
-                triggeredThresholds[chunkData] = set;
+                var chunkEventComponent = director.GetComponent<AIDirectorChunkEventComponent>();
+                if (chunkEventComponent == null)
+                {
+                    Debug.LogWarning("[Shamblers_Sense] Could not find AIDirectorChunkEventComponent for high heat spawns.");
+                    return;
+                }
+
+                var playerChunkCoords = GameManager.Instance.World.Players.list
+                    .Select(p => World.toChunkXZ(p.GetPosition()))
+                    .ToList();
+
+                var hottestChunks = chunkEventComponent.activeChunks
+                    .OrderByDescending(kvp => kvp.Value.ActivityLevel)
+                    .Take(10)
+                    .Select(kvp =>
+                    {
+                        var bestEvent = FindBestEvent(kvp.Value);
+                        return bestEvent != null ? bestEvent.Position : new Vector3i(0, 0, 0);
+                    })
+                    .ToList();
+
+                var playerChunkCoords3D = playerChunkCoords.Select(v2 => new Vector3i(v2.x, 0, v2.y)).ToList();
+
+                foreach (var chunk in hottestChunks)
+                {
+                    for (int i = 0; i < 3; i++) // Up to 3 groups per chunk
+                    {
+                        Vector3? spawnPos = FindValidSpawnPosition(chunk, 20, 5, playerChunkCoords3D);
+                        if (spawnPos.HasValue)
+                        {
+                            SpawnZombieGroup(spawnPos.Value, 4 + rng.Next(3)); // 4–6 zombies per group
+                        }
+                    }
+                }
             }
-            set.Add(threshold);
+            catch (Exception ex)
+            {
+                Debug.LogError("[Shamblers_Sense] Exception in SpawnGroupsNearHighHeatChunks: " + ex);
+            }
+        }
+
+        private static Vector3? FindValidSpawnPosition(Vector3i centerChunk, int maxRadiusChunks, int minDistanceChunks, List<Vector3i> playerChunks)
+        {
+            for (int attempt = 0; attempt < 10; attempt++)
+            {
+                int dx = rng.Next(-maxRadiusChunks, maxRadiusChunks + 1);
+                int dz = rng.Next(-maxRadiusChunks, maxRadiusChunks + 1);
+
+                if (Mathf.Abs(dx) < minDistanceChunks && Mathf.Abs(dz) < minDistanceChunks)
+                    continue;
+
+                Vector3i targetChunk = new Vector3i(centerChunk.x + dx, 0, centerChunk.z + dz);
+
+                bool tooCloseToPlayer = playerChunks.Any(p =>
+                    Mathf.Abs(p.x - targetChunk.x) < minDistanceChunks &&
+                    Mathf.Abs(p.z - targetChunk.z) < minDistanceChunks);
+
+                if (tooCloseToPlayer)
+                    continue;
+
+                Vector3 pos = new Vector3(targetChunk.x * 16 + 8, 0, targetChunk.z * 16 + 8);
+                pos.y = GameManager.Instance.World.GetHeight((int)pos.x, (int)pos.z) + 1f;
+
+                return pos;
+            }
+
+            return null;
+        }
+
+        private static void SpawnZombieGroup(Vector3 center, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                float angle = (float)(rng.NextDouble() * Math.PI * 2);
+                float radius = 5f + (float)rng.NextDouble() * 10f;
+
+                Vector3 offset = new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * radius;
+                Vector3 spawnPos = center + offset;
+                spawnPos.y = GameManager.Instance.World.GetHeight((int)spawnPos.x, (int)spawnPos.z) + 1f;
+
+                Entity zombie = EntityFactory.CreateEntity(EntityClass.FromString("zombieBoe"), spawnPos); // Replace with your own types
+                if (zombie != null)
+                    zombie.SetPosition(spawnPos);
+                    GameManager.Instance.World.SpawnEntityInWorld(zombie);
+            }
         }
     }
 
-    [HarmonyPatch(typeof(AIDirector))]
-    [HarmonyPatch("GetMaxZombies")]
-    public class Patch_AIDirector_GetMaxZombies
+    public static class ShamblersSenseTracker
     {
-        static void Postfix(ref int __result)
+        private static float lastTriggeredThreshold = 0f;
+        private static int currentSpawnCount = 0;
+        private static int maxSpawnsThisThreshold = 1;
+
+        public static void Reset()
         {
-            var player = GameManager.Instance.World.GetPrimaryPlayer();
-            if (player == null) return;
+            lastTriggeredThreshold = 0f;
+            currentSpawnCount = 0;
+            maxSpawnsThisThreshold = 1;
+            Debug.Log("[Shamblers_Sense] Spawn tracker reset.");
+        }
 
-            var chunkCoord = player.GetChunkCoordinate();
-            var chunkData = GameManager.Instance.World.aiDirector.GetChunkData(chunkCoord);
-
-            if (chunkData != null)
+        public static bool CanSpawn(float currentThreshold)
+        {
+            if (currentThreshold > lastTriggeredThreshold)
             {
-                float heat = chunkData.ActivityLevel;
-                float halfwayHeat = 50f; // example threshold
+                lastTriggeredThreshold = currentThreshold;
+                currentSpawnCount = 0;
+                maxSpawnsThisThreshold = UnityEngine.Random.Range(1, 3);
+                Debug.Log($"[Shamblers_Sense] New threshold {currentThreshold} reached, max spawns set to {maxSpawnsThisThreshold}");
+                return true;
+            }
+            else if (currentThreshold == lastTriggeredThreshold)
+            {
+                return currentSpawnCount < maxSpawnsThisThreshold;
+            }
+            return false;
+        }
 
-                if (heat >= halfwayHeat)
-                {
-                    float boost = UnityEngine.Random.Range(0.10f, 0.15f);
-                    int extra = Mathf.CeilToInt(__result * boost);
-                    __result += extra;
-
-                    ShamblersSenseLogger.Log($"Boosted max zombies by {extra} due to heat {heat}");
-                }
+        public static void RecordSpawn(float currentThreshold)
+        {
+            if (currentThreshold == lastTriggeredThreshold)
+            {
+                currentSpawnCount++;
+                Debug.Log($"[Shamblers_Sense] Recorded spawn {currentSpawnCount}/{maxSpawnsThisThreshold} at threshold {currentThreshold}");
             }
         }
     }
