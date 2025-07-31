@@ -111,13 +111,17 @@ namespace Shamblers_Sense
 
                 var playerChunkCoords3D = playerChunkCoords.Select(v2 => new Vector3i(v2.x, 0, v2.y)).ToList();
 
+                Debug.Log($"Spawning zombie groups near {hottestChunks.Count} hottest chunks.");
+
                 foreach (var chunk in hottestChunks)
                 {
+                    Debug.Log($"Spawning groups near chunk at {chunk}");
                     for (int i = 0; i < 3; i++) // Up to 3 groups per chunk
                     {
                         Vector3? spawnPos = FindValidSpawnPosition(chunk, 20, 5, playerChunkCoords3D);
                         if (spawnPos.HasValue)
                         {
+                            Debug.Log($"Spawning zombie group at {spawnPos.Value}");
                             SpawnZombieGroup(spawnPos.Value, 4 + rng.Next(3)); // 4–6 zombies per group
                         }
                     }
@@ -159,6 +163,7 @@ namespace Shamblers_Sense
 
         private static void SpawnZombieGroup(Vector3 center, int count)
         {
+            Debug.Log($"Spawning zombie group at {center} with {count} zombies.");
             for (int i = 0; i < count; i++)
             {
                 float angle = (float)(rng.NextDouble() * Math.PI * 2);
@@ -175,6 +180,46 @@ namespace Shamblers_Sense
             }
         }
     }
+
+
+    [HarmonyPatch(typeof(AIScoutHordeSpawner), "spawnHordeNear")]
+    public class Patch_ScoutHordeSpawner_Suppress
+    {
+        static bool Prefix(World world, AIScoutHordeSpawner.ZombieCommand command, Vector3 target)
+        {
+            Debug.Log($"Screamer (Scout) scream triggered at position {target}");
+
+            // Convert target world position to chunk coordinates (Vector2i)
+            Vector2i chunkPos = World.toChunkXZ(new Vector2i((int)target.x, (int)target.z));
+
+            // Get the AI director's chunk event component
+            var chunkEventComponent = world.GetAIDirector().GetComponent<AIDirectorChunkEventComponent>();
+
+            // Create the chunk key for the dictionary lookup
+            long chunkKey = WorldChunkCache.MakeChunkKey(chunkPos.x, chunkPos.y);
+
+            if (chunkEventComponent.activeChunks.TryGetValue(chunkKey, out var chunkData))
+            {
+                Debug.Log($"Current heat before adding: {chunkData.activityLevel}");
+                // Increase the heat/activity level of the chunk
+                chunkData.activityLevel += 2f; // adjust heat value as needed
+                Debug.Log($"Heat added, new heat: {chunkData.activityLevel}");
+            }
+            else
+            {
+                // Create a new chunk data with initial heat if none exists
+                chunkData = new AIDirectorChunkData();
+                chunkData.activityLevel = 2f;
+                chunkEventComponent.activeChunks[chunkKey] = chunkData;
+                Debug.Log($"Heat added to new chunk data: {chunkData.activityLevel}");
+            }
+
+            // Suppress the actual horde spawn
+            Debug.Log("Screamer horde suppressed, no horde spawned.");
+            return false;
+        }
+    }
+
 
     public static class ShamblersSenseTracker
     {
