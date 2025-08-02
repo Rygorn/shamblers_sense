@@ -8,7 +8,9 @@ namespace Shamblers_Sense
     {
         public void InitMod(Mod mod)
         {
+            ShamblersSenseLogger.Log("ModEntry.InitMod() called");
             ShamblersSenseMain.Init();
+            ShamblersSenseLogger.Log("ShamblersSenseMain.Init() finished");
         }
     }
 }

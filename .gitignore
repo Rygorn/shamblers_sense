@@ -3,7 +3,7 @@
 *.dll
 
 # But keep your own mod DLLs inside Shamblers_Sense
-!Shamblers_Sense/**/*.dll
+!Shamblers_Sense/*.dll
 
 # Ignore the lib folder (for local DLL references)
 lib/*.dll
