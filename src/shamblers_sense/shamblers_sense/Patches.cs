@@ -1,13 +1,15 @@
-﻿using HarmonyLib;
-using UnityEngine;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System;
+using System.Reflection;
+using HarmonyLib;
+using UnityEngine;
 
 namespace Shamblers_Sense
 {
-    [HarmonyPatch(typeof(AIDirector))]
+    [HarmonyPatch(typeof(AIDirectorChunkEventComponent))]
     [HarmonyPatch("CheckToSpawn")]
+    [HarmonyPatch(new[] { typeof(AIDirectorChunkData) })]
     public class Patch_AIDirector_CheckToSpawn
     {
         private static AIDirectorChunkEventComponent chunkEventComponent;
@@ -23,14 +25,29 @@ namespace Shamblers_Sense
                 return false;
 
             // Cache component for scout spawns
-            if (chunkEventComponent == null)
+            //if (chunkEventComponent == null)
+            //{
+            //    chunkEventComponent = __instance.GetComponent<AIDirectorChunkEventComponent>();
+            //    if (chunkEventComponent == null)
+            //    {
+            //        Debug.LogWarning("[Shamblers_Sense] Could not find AIDirectorChunkEventComponent.");
+            //        return true;
+            //    }
+            //}
+
+            var aiDirector = GameManager.Instance.World.aiDirector;
+            var field = typeof(AIDirector).GetField("chunkEventComponent", BindingFlags.NonPublic | BindingFlags.Instance);
+            var chunkEventComponent = field?.GetValue(aiDirector) as AIDirectorChunkEventComponent;
+
+
+
+            if (chunkEventComponent != null)
             {
-                chunkEventComponent = __instance.GetComponent<AIDirectorChunkEventComponent>();
-                if (chunkEventComponent == null)
-                {
-                    Debug.LogWarning("[Shamblers_Sense] Could not find AIDirectorChunkEventComponent.");
-                    return true;
-                }
+                Log.Warning("ChunkEventComponent found via reflection.");
+            }
+            else
+            {
+                Log.Warning("ChunkEventComponent is NULL.");
             }
 
             float activity = _chunkData.ActivityLevel;
@@ -48,7 +65,7 @@ namespace Shamblers_Sense
                     var chunkEvent = FindBestEvent(_chunkData);
                     if (chunkEvent != null)
                     {
-                        chunkEventComponent.StartCooldownOnNeighbors(chunkEvent.Position);
+                        //chunkEventComponent.StartCooldownOnNeighbors(chunkEvent.Position);
                         chunkEventComponent.SpawnScouts(chunkEvent.Position.ToVector3());
                         ShamblersSenseTracker.RecordSpawn(threshold);
                         return false;
@@ -88,7 +105,8 @@ namespace Shamblers_Sense
         {
             try
             {
-                var chunkEventComponent = director.GetComponent<AIDirectorChunkEventComponent>();
+                var field = typeof(AIDirector).GetField("chunkEventComponent", BindingFlags.NonPublic | BindingFlags.Instance);
+                var chunkEventComponent = field?.GetValue(director) as AIDirectorChunkEventComponent;
                 if (chunkEventComponent == null)
                 {
                     Debug.LogWarning("[Shamblers_Sense] Could not find AIDirectorChunkEventComponent for high heat spawns.");
